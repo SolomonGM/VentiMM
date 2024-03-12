@@ -12,6 +12,7 @@ namespace Test_VentiMM.Sources
     class BlockCypherAPIClient
     {
         private string apiBaseUrl = "";
+        
         public string GetLitcoinWallet()
         {
             string Api_URL = "https://api.blockcypher.com/v1/example_endpoint?token=" + apiToken;
