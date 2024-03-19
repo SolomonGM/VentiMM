@@ -121,6 +121,7 @@ namespace VentiMM.Services
             {
                 Console.WriteLine($"Error getting Bitcoin info: {e.Message}");
                 await ReplyAsync("Error getting Bitcoin info. Please try again later.");
+                ;
             }
         }
     }
