@@ -3,16 +3,29 @@ using Discord.Commands;
 using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Threading.Tasks;
-using VentiMM;
 
 namespace Test_VentiMM.Sources
 {
-    class StaticSettings
+    class StaticSettings : ModuleBase<SocketCommandContext>
     {
-        /* public static async Task CryptoDropdownPrompt(ulong channelId, string messageText, List<string> options)
+        private static DiscordSocketClient _client;
+        public static void SetClient(DiscordSocketClient client)
         {
+            _client = client;
+        }
+
+        public static async Task CryptoDropdownPrompt(ulong channelId, string messageText, List<string> options)
+        {
+            if(_client == null)
+            {
+                Console.WriteLine("Client not initialized.");
+                return;
+            }
+
             var channel = _client.GetChannel(channelId) as IMessageChannel;
+
             if (channel == null)
             {
                 Console.WriteLine($"Channel with ID {channelId} not found.");
@@ -20,20 +33,30 @@ namespace Test_VentiMM.Sources
             }
 
             var embed = new EmbedBuilder()
-                .WithTitle("Dropdown Prompt")
+                .WithTitle("Cryptocurrency MiddleMan")
+                .WithImageUrl("C:\\Users\\sadjm\\source\\repos\\Test-VentiMM\\Assets\\VentiMM-logo.png")
                 .WithDescription(messageText)
                 .WithColor(Color.Blue)
                 .Build();
 
             var message = await channel.SendMessageAsync(embed: embed);
 
+           var selectionMenuOptions = new List<SelectMenuOptionBuilder>();
+           foreach(var option in options)
+            {
+                selectionMenuOptions.Add(new SelectMenuOptionBuilder()
+                    .WithLabel(option)
+                    .WithValue(option)
+                    .WithDescription($"Select {option}"));  
+            }
+
             // Create the dropdown menu
             var dropdown = new ComponentBuilder()
-                .WithSelectMenu("dropdown-menu", "Choose an option", options)
+                .WithSelectMenu("Select a crypto coin", selectionMenuOptions, placeholder: "Select a coin")
                 .Build();
 
             // Send the message with the dropdown menu
-            await message.ModifyAsync(msg => msg.Components = new Optional<ActionRowComponent[]> { dropdown });
-        } */
+            await message.ModifyAsync(msg => msg.Components = new Optional<MessageComponent>(dropdown));
+        }
     }
 }
