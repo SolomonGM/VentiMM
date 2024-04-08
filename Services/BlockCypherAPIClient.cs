@@ -4,34 +4,42 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Net.Http;
-using RestSharp;
+using Newtonsoft.Json.Linq;
 
-//Implement coinGecko APi
 namespace Test_VentiMM.Sources
 {
-    class BlockCypherAPIClient
+    class GetCoinInfoAPI
     {
-        private string apiBaseUrl = "";
-        
-        public string GetLitcoinWallet()
+        private readonly HttpClient client = new HttpClient();
+
+        public async Task<string> GetCoinPrice(string coin)
         {
-            string Api_URL = "https://api.blockcypher.com/v1/example_endpoint?token=" + apiToken;
-
-            HttpClient client = new HttpClient();
-            HttpResponseMessage response = client.GetAsync(Api_URL).Result;
-
-            if (response.IsSuccessStatusCode)
+            try
             {
-                string responseContent = response.Content.ReadAsStringAsync().Result;
-                return responseContent;
+                string apiURL = "https://api.coingecko.com/api/v3/simple/price?ids=" + coin + "&vs_currencies=usd";
+                var response = await client.GetAsync(apiURL);
+                response.EnsureSuccessStatusCode();
+
+                string responseBody = await response.Content.ReadAsStringAsync();
+                JObject CoinInfo = JObject.Parse(responseBody);
+
+
+                double CoinUsd = CoinInfo[coin]["usd"].Value<double>();
+
+                string formattedPrice = string.Format("{0:#,##0.00}", CoinUsd);
+
+                return formattedPrice;
             }
-            else
+            catch (HttpRequestException e)
             {
-                Console.WriteLine("Error: " + response.StatusCode);
-                return null;
+                Console.WriteLine($"HTTP ERROR: {e.Message}");
+                throw;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"ERROR: {e.Message}");
+                throw;
             }
         }
-
     }
 }
-
