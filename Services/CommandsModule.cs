@@ -13,6 +13,13 @@ namespace VentiMM.Services
 {
     public class CommandsModule : ModuleBase<SocketCommandContext>
     {
+        private readonly GetCoinInfoAPI _coinStats;
+
+        public CommandsModule()
+        {
+            _coinStats = new GetCoinInfoAPI();
+        }
+
         [Command("membercount")]
         [Summary("Displays the current player count.")]
         public async Task MemeberCount()
@@ -44,11 +51,34 @@ namespace VentiMM.Services
 
                     if (targetUser != null)
                     {
-                        var channel = await Context.Guild.CreateTextChannelAsync("Litcoin-1");
+                        var guild = Context.Guild;
 
-                        await channel.AddPermissionOverwriteAsync(Context.Guild.EveryoneRole, OverwritePermissions.DenyAll(channel));
-                        await channel.AddPermissionOverwriteAsync(user, new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow));
-                        await channel.AddPermissionOverwriteAsync(targetUser, new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow));
+                        var channel = await guild.GetTextChannelsAsync();
+
+                        string ticketName = "Litcoin-";
+
+                        HashSet<int> existingTicketNumbers = new HashSet<int>();
+                        foreach(var channels in channel)
+                        {
+                            if (channel.Name.StartsWith(ticketName) && int.TryParse(channel.Name.Substrings(ticketName.Length), out int ticketNumber))
+                            {
+                                existingTicketNumbers.Add(ticketNumber);
+                            }
+                        }
+
+                        int newTicketNumber;
+                        Random rnd = new Random();
+                        do
+                        {
+                            newTicketNumber = rnd.Next(1000, 10000);
+                        } while (existingTicketNumbers.Contains(newTicketNumber));
+
+                        string newChannelName = $"{ticketName}{newTicketNumber}";
+                        await guild.CreateTextChannelAsync(newChannelName);
+
+                        await channels.AddPermissionOverwriteAsync(Context.Guild.EveryoneRole, OverwritePermissions.DenyAll(channels));
+                        await channels.AddPermissionOverwriteAsync(user, new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow));
+                        await channels.AddPermissionOverwriteAsync(targetUser, new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow));
 
                         await ReplyAsync($"Ticket channel created. {user.Mention} and {targetUser.Mention} have been added.");
                     }
@@ -65,47 +95,40 @@ namespace VentiMM.Services
         }
 
         [Command("litcoin")]
-        public async Task litcoinStatus()
+        [Alias("LTC")]
+        public async Task LitcoinStatus()
         {
-           HttpClient client = new HttpClient();
-           try
-           {
-                var response = await client.GetAsync("https://api.coingecko.com/api/v3/simple/price?ids=litecoin&vs_currencies=usd");
-                response.EnsureSuccessStatusCode();
+            try
+            {
+                string coin = "litcoin";
+                var formattedPrice = await _coinStats.GetCoinPrice(coin);
 
-                var responseBody = await response.Content.ReadAsStringAsync();
-                var litecoinInfo = JObject.Parse(responseBody)["litecoin"];
 
                 var embed = new EmbedBuilder()
-                    .WithThumbnailUrl("https://assets.coingecko.com/coins/images/2/large/litecoin.png?1547033580")
-                    .WithTitle("Litecoin (LTC)")
-                    .AddField("Price (USD)", $"${litecoinInfo["usd"]} USD")
-                    .WithColor(Color.LighterGrey)
+                    .WithThumbnailUrl("https://assets.coingecko.com/coins/images/2/standard/litecoin.png?1696501400")
+                    .WithTitle("Litcoin (LTC)")
+                    .AddField("Price (USD)", $"${formattedPrice} USD")
+                    .WithColor(Color.Orange)
                     .Build();
 
                 await ReplyAsync(embed: embed);
-
-           }
-           catch (HttpRequestException e)
-           {
-                Console.WriteLine($"Error getting Litecoin info: {e.Message}");
-                await ReplyAsync("Error getting Litecoin info. Please try again later.");
-           }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error getting Litcoin info: {e.Message}");
+                await ReplyAsync("Error getting Litcoin info. Please try again later.");
+            }
         }
 
         [Command("bitcoin")]
-        public async Task bitcoinStatus()
+        [Alias("BTC")]
+        public async Task BitcoinStatus()
         {
-            HttpClient client = new HttpClient();
             try
             {
-                var response = await client.GetAsync("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd");
-                response.EnsureSuccessStatusCode();
+                string coin = "bitcoin";
+                var formattedPrice = await _coinStats.GetCoinPrice(coin);
 
-                var responseBody = await response.Content.ReadAsStringAsync();
-                var bitcoinInfo = JObject.Parse(responseBody)["bitcoin"];
-
-                string formattedPrice = string.Format("{0:#,##0.00}", bitcoinInfo["usd"].Value<double>());
 
                 var embed = new EmbedBuilder()
                     .WithThumbnailUrl("https://assets.coingecko.com/coins/images/1/standard/bitcoin.png?1696501400")
@@ -115,16 +138,63 @@ namespace VentiMM.Services
                     .Build();
 
                 await ReplyAsync(embed: embed);
-
             }
-            catch (HttpRequestException e)
+            catch (Exception e)
             {
                 Console.WriteLine($"Error getting Bitcoin info: {e.Message}");
                 await ReplyAsync("Error getting Bitcoin info. Please try again later.");
-                ;
+            }
+        }
+
+        [Command("ethereum")]
+        [Alias("eth")]
+        public async Task EthereumStatus()
+        {
+            try
+            {
+                string coin = "ethereum";
+                var formattedPrice = await _coinStats.GetCoinPrice(coin);
+
+
+                var embed = new EmbedBuilder()
+                    .WithThumbnailUrl("https://assets.coingecko.com/coins/images/279/standard/ethereum.png?1696501628")
+                    .WithTitle("Ethereum (ETH)")
+                    .AddField("Price (USD)", $"${formattedPrice} USD")
+                    .WithColor(Color.DarkBlue)
+                    .Build();
+
+                await ReplyAsync(embed: embed);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error getting Ethereum info: {e.Message}");
+                await ReplyAsync("Error getting Ethereum info. Please try again later.");
+            }
+        }
+
+        [Command("Solana")]
+        [Alias("SOL")]
+        public async Task SolanaStatus()
+        {
+            try
+            {
+                string coin = "Solana";
+                var formattedPrice = await _coinStats.GetCoinPrice(coin);
+
+                var embed = new EmbedBuilder()
+                    .WithThumbnailUrl("https://assets.coingecko.com/coins/images/4128/standard/solana.png?1696504756")
+                    .WithTitle("Solana (SOL)")
+                    .AddField("Price (USD)", $"${formattedPrice} USD")
+                    .WithColor(Color.Orange)
+                    .Build();
+
+                await ReplyAsync(embed: embed);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Error getting Solana info: {e.Message}");
+                await ReplyAsync("Error getting Solana info. Please try again later.");
             }
         }
     }
 }
-
-
