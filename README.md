@@ -30,3 +30,18 @@ Before you begin, ensure you have met the following requirements:
 2. **Install dependencies**:
    ```sh
    dotnet restore
+
+3. **Confidure the bot**:
+   - Create a file named `appsettings.json` in the root directory of the project.
+   - Add your Discord bot token and other configuration settings to `appsettings.json`:
+   ```sh
+   {
+     "DiscordToken": "YOUR_DISCORD_BOT_TOKEN",
+     "DatabaseConnectionString": "YOUR_DATABASE_CONNECTION_STRING"
+   }
+
+2. **Run the bot**:
+   ```sh
+   dotnet run
+   
+   
