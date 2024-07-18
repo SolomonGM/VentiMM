@@ -5,14 +5,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Discord.WebSocket;
-using Discord.Net;
-using Newtonsoft.Json;
-using Discord;
 using Discord.Commands;
-using System.Reflection;
+using Newtonsoft.Json;
 using VentiMM.Services;
 using Microsoft.Extensions.DependencyInjection;
-
 
 namespace VentiMM
 {
@@ -21,53 +17,53 @@ namespace VentiMM
         private DiscordSocketClient _client;
         private CommandService _commands;
         private IServiceProvider _services;
-        private string _token;
-        private string _commandPrefix;
 
-        public static void Main(string[] args)
-            => new Program().MainAsync().GetAwaiter().GetResult();
+        public static async Task Main(string[] args)
+        {
+            var program = new Program();
+            await program.MainAsync();
+        }
 
         public async Task MainAsync()
         {
-            using (var stream = new FileStream("appsettings.json", FileMode.Open, FileAccess.Read))
-            using (var reader = new StreamReader(stream))
-            {
-                var json = await reader.ReadToEndAsync();
-                var config = JsonConvert.DeserializeObject<Config>(json);
+            var host = CreateHostBuilder().Build();
 
-                _token = config.Token;
-                _commandPrefix = config.Prefix;
-            }
+            _client = host.Services.GetRequiredService<DiscordSocketClient>();
+            _commands = host.Services.GetRequiredService<CommandService>();
 
-            _client = new DiscordSocketClient();
-            _commands = new CommandService();
+            var config = host.Services.GetRequiredService<IConfiguration>();
+
+            string token = config["Token"];
+            string commandPrefix = config["Prefix"];
 
             _client.Log += LogAsync;
             _commands.Log += LogAsync;
 
-            _services = SetupService();
+            _services = ConfigureServices();
 
-            await RegisterCommandsAsync();
+            await RegisterCommandsAsync(commandPrefix);
 
-            await _client.LoginAsync(TokenType.Bot, _token);
+            await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
 
-            await Task.Delay(-1);
+            await host.RunAsync();
         }
 
-        private async Task RegisterCommandsAsync()
+        private async Task RegisterCommandsAsync(string commandPrefix)
         {
-            _client.MessageReceived += HandleCommandAsync;
-            await _commands.AddModuleAsync<CommandsModule>(_services);
+            _client.MessageReceived += async (message) => await HandleCommandAsync(message, commandPrefix);
+            await _commands.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
         }
 
-        private async Task HandleCommandAsync(SocketMessage arg)
+        private async Task HandleCommandAsync(SocketMessage arg, string commandPrefix)
         {
             var message = arg as SocketUserMessage;
+            if (message == null) return;
+
             var context = new SocketCommandContext(_client, message);
 
             int argPos = 0;
-            if(message.HasStringPrefix(_commandPrefix, ref  argPos) || message.HasMentionPrefix(_client.CurrentUser, ref argPos))
+            if (message.HasStringPrefix(commandPrefix, ref argPos) || message.HasMentionPrefix(_client.CurrentUser, ref argPos))
             {
                 var result = await _commands.ExecuteAsync(context, argPos, _services);
                 if (!result.IsSuccess)
@@ -82,20 +78,41 @@ namespace VentiMM
             Console.WriteLine(log.ToString());
             return Task.CompletedTask;
         }
-        public class Config
-        {
-            public string Token { get; set; }
-            public string Prefix { get; set; }
 
-        }
-        private IServiceProvider SetupService()
+        private IServiceProvider ConfigureServices()
         {
             var services = new ServiceCollection()
                 .AddSingleton(_client)
                 .AddSingleton(_commands)
+                .AddSingleton<StaticSettings>()
+                .AddSingleton<GetCoinInfoAPI>()
+                .AddSingleton<CommandsModule>()
+                .AddLogging(configure => configure.AddConsole())
                 .BuildServiceProvider();
 
             return services;
         }
+
+        public static IHostBuilder CreateHostBuilder() =>
+            Host.CreateDefaultBuilder()
+                .ConfigureAppConfiguration((context, config) =>
+                {
+                    config.SetBasePath(Directory.GetCurrentDirectory());
+                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                    config.AddEnvironmentVariables();
+                })
+                .ConfigureLogging(logging =>
+                {
+                    logging.ClearProviders();
+                    logging.AddConsole();
+                })
+                .ConfigureServices((context, services) =>
+                {
+                    services.AddSingleton<DiscordSocketClient>();
+                    services.AddSingleton<CommandService>();
+                    services.AddSingleton<StaticSettings>();
+                    services.AddSingleton<GetCoinInfoAPI>();
+                    services.AddSingleton<CommandsModule>();
+                });
     }
 }
