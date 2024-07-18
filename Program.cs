@@ -8,6 +8,9 @@ using Discord.WebSocket;
 using Discord.Commands;
 using Newtonsoft.Json;
 using VentiMM.Services;
+using VentiMM.Handlers;
+using VentiMM.Utilities;
+using VentiMM.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace VentiMM
