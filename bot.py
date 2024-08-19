@@ -26,7 +26,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="v!", intents=intents)
 
-from config.btc_config import setup_btc_ticket_channel, BTC_CHANNEL_CONFIG
+from config.btc_ticket_config import setup_btc_ticket_channel, BTC_CHANNEL_CONFIG
 from config.eth_config import setup_eth_ticket_channel, ETH_CHANNEL_CONFIG
 from config.sol_config import setup_sol_ticket_channel, SOL_CHANNEL_CONFIG
 from config.ltc_config import setup_ltc_ticket_channel, LTC_CHANNEL_CONFIG
