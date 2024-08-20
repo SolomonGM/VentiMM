@@ -55,51 +55,75 @@ class RoleSelectionView(discord.ui.View):
         sender = self.user if is_sender else self.mentioned_user
         receiver = self.mentioned_user if is_sender else self.user
 
-        # Send confirmation embed to the mentioned user (User B)
-        confirmation_embed = discord.Embed(
-            title="Confirm Transaction Roles",
-            description=f"{sender.mention} will be sending cryptocurrency to {receiver.mention}.\n\nPlease confirm if the roles are correct.",
-            color=discord.Color.green()
+        # Send the prompt for the amount to be inputted
+        amount_prompt_embed = discord.Embed(
+            title="Enter Amount",
+            description=f"{sender.mention}, please enter the amount of Bitcoin you will be sending to {receiver.mention}.",
+            color=discord.Color.blue()
         )
+        await interaction.channel.send(embed=amount_prompt_embed)
 
-        # Determine who should be able to confirm or cancel (opposite of who initiated the role decision)
-        confirm_user = sender if not is_sender else receiver
-        confirmation_view = ConfirmationView(confirm_user=confirm_user)
-        await interaction.channel.send(embed=confirmation_embed, view=confirmation_view)
+        # Wait for amount input
+        try:
+            amount_message = await bot.wait_for(
+                "message",
+                timeout=60.0,
+                check=lambda m: m.author == sender and m.channel == interaction.channel and m.content.isdigit()
+            )
 
-class ConfirmationView(discord.ui.View):
+            amount = amount_message.content
 
-    def __init__(self, confirm_user):
+            # Confirm the amount with the receiver
+            confirm_embed = discord.Embed(
+                title="Confirm Amount",
+                description=f"{sender.mention} will be sending **{amount} BTC** to {receiver.mention}. Please confirm if this is correct.",
+                color=discord.Color.green()
+            )
+
+            confirmation_view = AmountConfirmationView(confirm_user=receiver, amount=amount)
+            await interaction.channel.send(embed=confirm_embed, view=confirmation_view)
+
+        except asyncio.TimeoutError:
+            timeout_embed = discord.Embed(
+                title="Timeout",
+                description="You took too long to input an amount. Please try again later.",
+                color=discord.Color.red()
+            )
+            await interaction.channel.send(embed=timeout_embed)
+
+class AmountConfirmationView(discord.ui.View):
+    def __init__(self, confirm_user, amount):
         super().__init__(timeout=None)
         self.confirm_user = confirm_user
+        self.amount = amount
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Only allow the designated confirm user to confirm the transaction
-        if interaction.user.id == self.confirm_user.id:
+        # Only allow the designated confirm user to confirm the amount
+        if interaction.user == self.confirm_user:
             await interaction.message.delete()
             confirmed_embed = discord.Embed(
                 title="Transaction Confirmed",
-                description=f"{self.confirm_user.mention} has confirmed the roles. The transaction will proceed.",
+                description=f"{self.confirm_user.mention} has confirmed the amount of **{self.amount} BTC**. The transaction will proceed.",
                 color=discord.Color.green()
             )
             await interaction.channel.send(embed=confirmed_embed)
         else:
-            await interaction.response.send_message("Only the user added can confirm.", ephemeral=True)
+            await interaction.response.send_message("Only the designated user can confirm this transaction.", ephemeral=True)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Only allow the designated confirm user to cancel the transaction
-        if interaction.user.id == self.confirm_user.id:
+        if interaction.user == self.confirm_user:
             await interaction.message.delete()
             canceled_embed = discord.Embed(
                 title="Transaction Canceled",
-                description="Transacrion roles have not been assigned. Please ping support, and a staff member will assist you shortly.",
+                description="The transaction has been canceled. Please contact support for assistance.",
                 color=discord.Color.red()
             )
             await interaction.channel.send(embed=canceled_embed)
         else:
-            await interaction.response.send_message("Only the added user can cancel.", ephemeral=True)
+            await interaction.response.send_message("Only the designated user can cancel this transaction.", ephemeral=True)
 
 async def setup_btc_ticket_channel(bot, channel, user):
     # Update to the staff roles of your server
