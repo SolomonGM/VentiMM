@@ -1,10 +1,13 @@
-import discord
-from discord.ext import commands, tasks
-import random
-import string
+import asyncio
 import json
 import os
+import random
+import string
 from datetime import datetime, timedelta
+
+import discord
+from discord.ext import commands, tasks
+from web3 import Web3
 
 # Load configuration from config.json
 with open('config/config.json', 'r') as config_file:
@@ -12,11 +15,20 @@ with open('config/config.json', 'r') as config_file:
 
 DISCORD_TOKEN = config.get('DISCORD_TOKEN')
 CHANNEL_ID = int(config.get('CHANNEL_ID'))
+INFURA_URL = config.get('INFURA_URL')
+WATCH_ADDRESS = config.get('WATCH_ADDRESS')
+CONFIRMATION_THRESHOLD = int(config.get('CONFIRMATION_THRESHOLD'))
 
 if DISCORD_TOKEN is None:
     raise ValueError("No bot token found in configuration file.")
 if CHANNEL_ID is None:
     raise ValueError("No channel ID found in configuration file.")
+if INFURA_URL is None:
+    raise ValueError("No Infura URL found in configuration file.")
+if WATCH_ADDRESS is None:
+    raise ValueError("No Ethereum address found in configuration file.")
+if CONFIRMATION_THRESHOLD is None:
+    raise ValueError("No confirmation threshold found in configuration file.")
 
 MAX_CHANNELS_PER_USER = 8
 TIME_WINDOW = timedelta(minutes=10)
@@ -27,9 +39,9 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="v!", intents=intents)
 
 from config.btc_ticket_config import setup_btc_ticket_channel, BTC_CHANNEL_CONFIG
-from config.eth_config import setup_eth_ticket_channel, ETH_CHANNEL_CONFIG
-from config.sol_config import setup_sol_ticket_channel, SOL_CHANNEL_CONFIG
-from config.ltc_config import setup_ltc_ticket_channel, LTC_CHANNEL_CONFIG
+from config.eth_ticket_config import setup_eth_ticket_channel, ETH_CHANNEL_CONFIG
+from config.sol_ticket_config import setup_sol_ticket_channel, SOL_CHANNEL_CONFIG
+from config.ltc_ticket_config import setup_ltc_ticket_channel, LTC_CHANNEL_CONFIG
 
 CHANNEL_CONFIG = {**BTC_CHANNEL_CONFIG, **ETH_CHANNEL_CONFIG, **SOL_CHANNEL_CONFIG, **LTC_CHANNEL_CONFIG}
 
@@ -131,6 +143,7 @@ class CryptoSelect(discord.ui.Select):
         except Exception as e:
             print(f"Error: {e}")
             await interaction.followup.send(f"Failed to create channel: {e}", ephemeral=True)
+
 class CryptoView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=30)
