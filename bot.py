@@ -15,20 +15,11 @@ with open('config/config.json', 'r') as config_file:
 
 DISCORD_TOKEN = config.get('DISCORD_TOKEN')
 CHANNEL_ID = int(config.get('CHANNEL_ID'))
-INFURA_URL = config.get('INFURA_URL')
-WATCH_ADDRESS = config.get('WATCH_ADDRESS')
-CONFIRMATION_THRESHOLD = int(config.get('CONFIRMATION_THRESHOLD'))
 
 if DISCORD_TOKEN is None:
     raise ValueError("No bot token found in configuration file.")
 if CHANNEL_ID is None:
     raise ValueError("No channel ID found in configuration file.")
-if INFURA_URL is None:
-    raise ValueError("No Infura URL found in configuration file.")
-if WATCH_ADDRESS is None:
-    raise ValueError("No Ethereum address found in configuration file.")
-if CONFIRMATION_THRESHOLD is None:
-    raise ValueError("No confirmation threshold found in configuration file.")
 
 MAX_CHANNELS_PER_USER = 8
 TIME_WINDOW = timedelta(minutes=10)
