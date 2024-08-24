@@ -21,8 +21,144 @@ class TicketView(discord.ui.View):
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Deleting ticket...", ephemeral=True)
-        await interaction.channel.delete()
+        if interaction.user == self.user:
+            await interaction.response.send_message("Deleting ticket...", ephemeral=True)
+            await interaction.channel.delete()
+        else:
+            await interaction.response.send_message("Only the ticket creator can cancel the ticket.", ephemeral=True)
+
+class RoleSelectionView(discord.ui.View):
+    def __init__(self, bot, user, mentioned_user):
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.user = user
+        self.mentioned_user = mentioned_user
+
+    @discord.ui.button(label="Sender", style=discord.ButtonStyle.green)
+    async def sender_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user == self.user:
+            await self.finalize_role_selection(interaction, is_sender=True)
+        else:
+            await interaction.response.send_message("Only the ticket owner can select this option.", ephemeral=True)
+
+    @discord.ui.button(label="Receiver", style=discord.ButtonStyle.danger)
+    async def receiver_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user == self.user:
+            await self.finalize_role_selection(interaction, is_sender=False)
+        else:
+            await interaction.response.send_message("Only the ticket owner can select this option.", ephemeral=True)
+
+    async def finalize_role_selection(self, interaction: discord.Interaction, is_sender: bool):
+        # Remove the role selection embed and buttons
+        await interaction.message.delete()
+
+        # Determine roles
+        sender = self.user if is_sender else self.mentioned_user
+        receiver = self.mentioned_user if is_sender else self.user
+
+        # Send the prompt for the amount to be inputted
+        amount_prompt_embed = discord.Embed(
+            title="Enter Amount",
+            description=f"{sender.mention}, please enter the amount of Ethereum you will be sending to {receiver.mention}.",
+            color=discord.Color.green()
+        )
+        await interaction.channel.send(embed=amount_prompt_embed)
+
+        # Wait for amount input
+        try:
+            amount_message = await self.bot.wait_for(
+                "message",
+                timeout=60.0,
+                check=lambda m: m.author == sender and m.channel == interaction.channel and m.content.isdigit()
+            )
+
+            amount = amount_message.content
+
+            # Confirm the amount with the receiver
+            confirm_embed = discord.Embed(
+                title="Confirm Amount",
+                description=f"{sender.mention} will be sending **${amount}** to {receiver.mention}.\n\n Please confirm if this is correct.",
+                color=discord.Color.green()
+            )
+
+            confirmation_view = AmountConfirmationView(confirm_user=receiver, amount=amount, channel=interaction.channel)
+            await interaction.channel.send(embed=confirm_embed, view=confirmation_view)
+
+        except asyncio.TimeoutError:
+            timeout_embed = discord.Embed(
+                title="Timeout",
+                description="You took too long to input an amount. Please try again later.",
+                color=discord.Color.red()
+            )
+            await interaction.channel.send(embed=timeout_embed)
+
+class AmountConfirmationView(discord.ui.View):
+    def __init__(self, confirm_user, amount, channel):
+        super().__init__(timeout=None)
+        self.confirm_user = confirm_user
+        self.amount = float(amount)  # Convert to float for comparison
+        self.channel = channel
+        self.crypto_address = "0x7FD6D45F7780b84a63E8CE18db699045a5fcb2f9"  # Replace with your actual crypto address
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user == self.confirm_user:
+            await interaction.message.delete()
+
+            address_prompt_embed = discord.Embed(
+                title="Send the Cryptocurrency",
+                description=(
+                    f"Please send **${self.amount}** worth of Ethereum to the following address:\n\n"
+                    f"`{self.crypto_address}`\n\n"
+                    "Once the transaction is complete, you will be notified here.\n\n"
+                    f"<:R1:1276473197767954453> Awaiting Confirmation Status: `0/3`"
+                ),
+                color=discord.Color.blue()
+            )
+            address_prompt_embed.set_thumbnail(url="https://clipground.com/images/ethereum-png-12.png")
+            
+            # Create a new view for the buttons
+            copy_view = discord.ui.View()
+
+            # Define the 'Paste Address' button
+            paste_button = discord.ui.Button(label="Paste Address", style=discord.ButtonStyle.primary)
+
+            # Define the callback for the 'Paste Address' button
+            async def paste_address_callback(interaction: discord.Interaction):
+                await interaction.channel.send(self.crypto_address)
+
+                # Disable button after single use
+                paste_button.disabled = True
+                
+                # Update the message with the disabled button
+                await interaction.response.edit_message(view=copy_view)
+
+            # Set the callback for the 'Paste Address' button
+            paste_button.callback = paste_address_callback
+
+            # Add the 'Paste Address' button to the view
+            copy_view.add_item(paste_button)
+            
+            # Send the embed with the buttons
+            await interaction.channel.send(embed=address_prompt_embed, view=copy_view)
+
+        else:
+            await interaction.response.send_message("Only the receiver can confirm.", ephemeral=True)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user == self.confirm_user:
+            await interaction.message.delete()
+            canceled_embed = discord.Embed(
+                title="Transaction Canceled",
+                description="The transaction has been canceled. Please contact support for assistance.",
+                color=discord.Color.red()
+            )
+            canceled_embed.set_footer(text="If you need further assistance, contact support.", icon_url="https://example.com/footer_icon.png")
+            await interaction.channel.send(embed=canceled_embed)
+        else:
+            await interaction.response.send_message("Only the receiver can cancel this transaction.", ephemeral=True)
+
 
 async def setup_eth_ticket_channel(bot, channel, user):
     # Update to the staff roles of your server
@@ -45,7 +181,7 @@ async def setup_eth_ticket_channel(bot, channel, user):
     prompt_embed = discord.Embed(
         title="Add user to transaction ticket",
         description=(
-            "Please mention another user who you will be making a Ethereum transaction with.\n"
+            "Please mention another user who you will be making an Ethereum transaction with.\n"
             "For example, you can ping **@john123**.\n\n"
             "Please do not ping staff members or bots."
         ),
@@ -58,8 +194,8 @@ async def setup_eth_ticket_channel(bot, channel, user):
         return any(role.id in STAFF_ROLES_IDS for role in user.roles)
 
     def is_user_in_channel(user, channel):
-        # Check if user is among members who can see the channel
-        return any(member.id == user.id for member in channel.members)
+        # Check if user is already in the channel
+        return user in channel.members
 
     def check(message):
         # Check if the message is from the same user and in the same channel
@@ -107,7 +243,20 @@ async def setup_eth_ticket_channel(bot, channel, user):
             description=f"{mentioned_user.mention} has been added to the ticket channel {channel.mention}.",
             color=discord.Color.green()
         )
-        await channel.send(embed=confirmation_embed)
+        confirmation_message = await channel.send(embed=confirmation_embed)
+
+        # Delete the "User Added" embed after 3 seconds to reduce clutter
+        await asyncio.sleep(3)
+        await confirmation_message.delete()
+
+        # Send the transaction role selection embed
+        role_selection_embed = discord.Embed(
+            title="Where is the crypto going",
+            description="Please select your role in this transaction.",
+            color=discord.Color.green()
+        )
+        role_selection_view = RoleSelectionView(bot=bot, user=user, mentioned_user=mentioned_user)  # Pass bot instance here
+        await channel.send(embed=role_selection_embed, view=role_selection_view)
         
     except asyncio.TimeoutError:
         # If the user didn't mention anyone in time, send a timeout message
@@ -117,5 +266,3 @@ async def setup_eth_ticket_channel(bot, channel, user):
             color=discord.Color.red()
         )
         await channel.send(embed=timeout_embed)
-    except Exception as e:
-        print(f"An error occurred: {e}")
