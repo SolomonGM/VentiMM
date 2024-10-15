@@ -2,6 +2,11 @@ import discord
 from discord.ui import View, Button
 from discord.ext import tasks, commands
 import asyncio
+from dotenv import load_dotenv
+from web3 import Web3
+import os
+
+load_dotenv()
 
 # Configuration specifically for Ethereum (ETH)
 ETH_CHANNEL_CONFIG = {
@@ -67,7 +72,7 @@ class RoleSelectionView(discord.ui.View):
         # Wait for amount input
         try:
             amount_message = await self.bot.wait_for(
-                "message",
+                    "message",
                 timeout=60.0,
                 check=lambda m: m.author == sender and m.channel == interaction.channel and m.content.isdigit()
             )
@@ -77,11 +82,14 @@ class RoleSelectionView(discord.ui.View):
             # Confirm the amount with the receiver
             confirm_embed = discord.Embed(
                 title="Confirm Amount",
-                description=f"{sender.mention} will be sending **${amount}** to {receiver.mention}.\n\n Please confirm if this is correct.",
+                description=f"{sender.mention} will be sending **{amount} ETH** to {receiver.mention}.\n\n Please confirm if this is correct.",
                 color=discord.Color.green()
             )
 
-            confirmation_view = AmountConfirmationView(confirm_user=receiver, amount=amount, channel=interaction.channel)
+            # Pass the bot instance when creating AmountConfirmationView
+            confirmation_view = AmountConfirmationView(confirm_user=receiver, amount=amount, channel=interaction.channel, bot=self.bot)
+
+            # Now send the confirm_embed along with the confirmation view
             await interaction.channel.send(embed=confirm_embed, view=confirmation_view)
 
         except asyncio.TimeoutError:
@@ -89,16 +97,18 @@ class RoleSelectionView(discord.ui.View):
                 title="Timeout",
                 description="You took too long to input an amount. Please try again later.",
                 color=discord.Color.red()
-            )
+            )            
             await interaction.channel.send(embed=timeout_embed)
 
 class AmountConfirmationView(discord.ui.View):
-    def __init__(self, confirm_user, amount, channel):
+    def __init__(self, confirm_user, amount, channel, bot):
         super().__init__(timeout=None)
         self.confirm_user = confirm_user
         self.amount = float(amount)  # Convert to float for comparison
         self.channel = channel
-        self.crypto_address = "0x7FD6D45F7780b84a63E8CE18db699045a5fcb2f9"  # Replace with your actual crypto address
+        self.crypto_address = os.getenv('BOT_ADDRESS')  # Load from env variables
+        self.bot = bot  # Store bot instance for further use
+        self.w3 = Web3(Web3.HTTPProvider("HTTP://127.0.0.1:7545"))  # Initialize web3 with provider
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
     async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -108,7 +118,7 @@ class AmountConfirmationView(discord.ui.View):
             address_prompt_embed = discord.Embed(
                 title="Send the Cryptocurrency",
                 description=(
-                    f"Please send **${self.amount}** worth of Ethereum to the following address:\n\n"
+                    f"Please send **{self.amount} ETH** to the following address:\n\n"
                     f"`{self.crypto_address}`\n\n"
                     "Once the transaction is complete, you will be notified here.\n\n"
                     f"<:R1:1276473197767954453> Awaiting Confirmation Status: `0/3`"
@@ -142,8 +152,62 @@ class AmountConfirmationView(discord.ui.View):
             # Send the embed with the buttons
             await interaction.channel.send(embed=address_prompt_embed, view=copy_view)
 
+            # Start monitoring for the transaction confirmation
+            await self.monitor_transaction(interaction.channel)
+
         else:
             await interaction.response.send_message("Only the receiver can confirm.", ephemeral=True)
+
+    # Function to monitor Ethereum transactions
+    async def monitor_transaction(self, channel):
+        await channel.send("Monitoring for incoming transactions...")
+
+        # Start monitoring the blockchain for 10 minutes (600 seconds)
+        for _ in range(120):  # 120 iterations of 5 seconds = 10 minutes
+            latest_block = self.w3.eth.get_block('latest')
+
+            for tx_hash in latest_block['transactions']:
+                transaction = self.w3.eth.get_transaction(tx_hash)
+
+                # Check if the transaction is sent to the correct address
+                if transaction['to'] == self.crypto_address:
+                    # Ensure the amount matches the required amount
+                    received_amount = self.w3.from_wei(transaction['value'], 'ether')
+                    if received_amount >= self.amount:
+                        await self.confirm_transaction(channel, transaction, received_amount)
+                        return  # Exit the loop once transaction is confirmed
+
+            await asyncio.sleep(5)  # Wait 5 seconds before checking again
+
+        # If no transaction is confirmed after 10 minutes, send a timeout message
+        await self.transaction_timeout(channel)
+
+    # Function to confirm the transaction
+    async def confirm_transaction(self, channel, transaction, received_amount):
+        confirmation_embed = discord.Embed(
+            title="Transaction Confirmed",
+            description=(
+                f"A transaction of **{received_amount} ETH** has been received from `{transaction['from']}`.\n\n"
+                "Thank you for completing the transaction."
+            ),
+            color=discord.Color.green()
+        )
+        confirmation_embed.add_field(name="Transaction Hash", value=f"`{transaction['hash'].hex()}`")
+        await channel.send(embed=confirmation_embed)
+
+    # Function to handle transaction timeout
+    async def transaction_timeout(self, channel):
+        timeout_embed = discord.Embed(
+            title="Transaction Timeout",
+            description=(
+                "The transaction has not been confirmed within the allowed time. "
+                "Please ensure you have sent the correct amount to the specified address. "
+                "You can try again or contact support."
+            ),
+            color=discord.Color.red()
+        )
+        await channel.send(embed=timeout_embed)
+        
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger)
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
